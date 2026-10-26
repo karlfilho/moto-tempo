@@ -1,0 +1,716 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moto Tempo</title>
+<meta name="description" content="Previsão do tempo ao longo do trajeto, na hora em que você passa por cada trecho.">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root {
+  --bg: #f4f2ec; --card: #ffffff; --ink: #18213a; --muted: #5d6478; --line: #dcd8cc;
+  --accent: #9a7a2c; --accent-ink: #ffffff; --field: #fbfaf6;
+  --l0: #2f9a5c; --l1: #d9a400; --l2: #e06d10; --l3: #cf3434;
+  --l0-bg: #e3f3e9; --l1-bg: #fbf1cc; --l2-bg: #fde3cf; --l3-bg: #f9dada;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1322; --card: #151d31; --ink: #e7e9f0; --muted: #9aa2b8; --line: #27324d;
+    --accent: #d4af5a; --accent-ink: #0d1322; --field: #10182a;
+    --l0: #45b874; --l1: #e8bf2a; --l2: #f08a3a; --l3: #ec5b5b;
+    --l0-bg: #16382a; --l1-bg: #3c3312; --l2-bg: #42260f; --l3-bg: #461b1f;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1322; --card: #151d31; --ink: #e7e9f0; --muted: #9aa2b8; --line: #27324d;
+  --accent: #d4af5a; --accent-ink: #0d1322; --field: #10182a;
+  --l0: #45b874; --l1: #e8bf2a; --l2: #f08a3a; --l3: #ec5b5b;
+  --l0-bg: #16382a; --l1-bg: #3c3312; --l2-bg: #42260f; --l3-bg: #461b1f;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+header { padding: 20px 16px 8px; max-width: 980px; margin: 0 auto; }
+header h1 { margin: 0; font-size: 1.5rem; letter-spacing: .01em; }
+header h1 span { color: var(--accent); }
+header p { margin: 4px 0 0; color: var(--muted); }
+main { max-width: 980px; margin: 0 auto; padding: 8px 16px 40px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin: 12px 0; }
+.card h2 { margin: 0 0 10px; font-size: 1.1rem; }
+label { display: block; font-size: .85rem; color: var(--muted); margin: 10px 0 4px; }
+input, select { width: 100%; font: inherit; color: var(--ink); background: var(--field); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.ac { position: relative; }
+.ac ul { position: absolute; z-index: 1000; left: 0; right: 0; top: 100%; margin: 4px 0 0; padding: 4px; list-style: none; background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.18); max-height: 260px; overflow-y: auto; }
+.ac ul:empty { display: none; }
+.ac li { padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.ac li small { color: var(--muted); }
+.ac li:hover, .ac li.on { background: var(--bg); }
+.via { display: flex; gap: 8px; align-items: center; }
+.via .ac { flex: 1; }
+button { font: inherit; cursor: pointer; border-radius: 10px; border: 1px solid var(--line); background: var(--field); color: var(--ink); padding: 9px 12px; }
+button.primary { width: 100%; margin-top: 16px; background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; padding: 12px; }
+button.link { border: 0; background: none; color: var(--accent); padding: 6px 0; }
+button.x { padding: 6px 10px; }
+details { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 8px; }
+summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: 4px 0; }
+.hint { font-size: .8rem; color: var(--muted); margin: 4px 0 0; }
+#status { margin: 10px 0 0; color: var(--muted); min-height: 1.2em; }
+#status.err { color: var(--l3); }
+.stats { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-bottom: 10px; }
+.stats b { display: block; font-size: 1.15rem; }
+.stats span { font-size: .8rem; color: var(--muted); }
+.links { display: flex; flex-wrap: wrap; gap: 8px; }
+.links a { color: var(--ink); text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; font-size: .9rem; background: var(--field); }
+.links a:hover { border-color: var(--accent); }
+/* comparação de saídas */
+.grid { display: flex; flex-direction: column; gap: 6px; }
+.grow { display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: center; padding: 6px; border-radius: 10px; border: 2px solid transparent; cursor: pointer; }
+.grow:hover { background: var(--bg); }
+.grow.sel { border-color: var(--accent); background: var(--bg); }
+.grow .hr { font-weight: 700; font-variant-numeric: tabular-nums; }
+.grow .hr small { display: block; font-weight: 400; font-size: .72rem; color: var(--muted); }
+.cells { display: flex; gap: 2px; height: 22px; }
+.cells i { flex: 1; border-radius: 3px; min-width: 3px; }
+.cells.sun { height: 6px; margin-top: 3px; }
+.cells.sun i { border-radius: 2px; }
+:root { --sun-day: #fbf9f3; --sun-twi: #8e94a3; --sun-night: #161a26; }
+:root[data-theme="dark"] { --sun-day: #e4e6ee; --sun-twi: #6c7389; --sun-night: #000000; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --sun-day: #e4e6ee; --sun-twi: #6c7389; --sun-night: #000000; } }
+.sun-day { background: var(--sun-day); box-shadow: inset 0 0 0 1px var(--line); }
+.sun-twi { background: var(--sun-twi); }
+.sun-night { background: var(--sun-night); box-shadow: inset 0 0 0 1px var(--line); }
+.gcol { min-width: 0; }
+.gsum { grid-column: 2; font-size: .8rem; color: var(--muted); margin-top: -2px; }
+.gsum .best { color: var(--accent); font-weight: 700; }
+.axis { display: grid; grid-template-columns: 64px 1fr; gap: 8px; padding: 0 8px; font-size: .75rem; color: var(--muted); }
+.axis div { display: flex; justify-content: space-between; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 12px; font-size: .8rem; color: var(--muted); }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 4px; }
+.lv0 { background: var(--l0); } .lv1 { background: var(--l1); } .lv2 { background: var(--l2); } .lv3 { background: var(--l3); } .lvx { background: var(--line); }
+#map { height: 360px; border-radius: 10px; }
+.leaflet-container { background: var(--bg); font: inherit; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.9); } }
+:root[data-theme="dark"] .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.9); }
+/* trecho a trecho */
+.tl { list-style: none; margin: 0; padding: 0; }
+.tl li { display: grid; grid-template-columns: 58px 1fr; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+.tl li:first-child { border-top: 0; }
+.tl .t { font-weight: 700; font-variant-numeric: tabular-nums; border-left: 5px solid var(--line); padding-left: 8px; }
+.tl .t small { display: block; font-weight: 400; color: var(--muted); font-size: .75rem; }
+.tl .p { font-weight: 600; }
+.tl .p small { font-weight: 400; color: var(--muted); }
+.tl .w { font-size: .85rem; color: var(--muted); margin-top: 2px; }
+.tl .tmp { font-size: .9rem; margin-top: 2px; }
+.tl .tmp b { font-size: 1.05rem; }
+.lt { display: inline-block; font-size: .75rem; padding: 1px 7px; border-radius: 999px; margin-left: 4px; vertical-align: 1px; }
+.lt.sun-day { color: #18213a; } .lt.sun-twi { color: #fff; } .lt.sun-night { color: #fff; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.chip { font-size: .78rem; padding: 2px 8px; border-radius: 999px; border: 1px solid; }
+.chip.c1 { background: var(--l1-bg); border-color: var(--l1); }
+.chip.c2 { background: var(--l2-bg); border-color: var(--l2); }
+.chip.c3 { background: var(--l3-bg); border-color: var(--l3); }
+.chip.stop { background: var(--field); border-color: var(--accent); }
+.note { font-size: .8rem; color: var(--muted); }
+@media (max-width: 560px) {
+  .row3 { grid-template-columns: 1fr 1fr; }
+  #map { height: 300px; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Moto <span>Tempo</span></h1>
+  <p>A previsão de cada trecho na hora em que você vai passar por ele.</p>
+</header>
+<main>
+  <section class="card" id="form">
+    <label for="orig">Saindo de</label>
+    <div class="ac"><input id="orig" placeholder="Cidade, endereço ou lat,long" autocomplete="off"><ul></ul></div>
+    <div id="vias"></div>
+    <button class="link" id="addVia" type="button">+ passar por (força o caminho)</button>
+    <label for="dest">Indo para</label>
+    <div class="ac"><input id="dest" placeholder="Cidade, endereço ou lat,long" autocomplete="off"><ul></ul></div>
+    <label for="gmaps">…ou cole um link de rota do Google Maps</label>
+    <input id="gmaps" placeholder="https://www.google.com/maps/dir/…" autocomplete="off">
+    <div class="row">
+      <div><label for="date">Dia</label><input type="date" id="date"></div>
+      <div><label for="time">Saída prevista</label><input type="time" id="time" step="300"></div>
+    </div>
+    <details>
+      <summary>Ritmo, paradas e modelo</summary>
+      <div class="row3">
+        <div><label for="pace">Ritmo (% do tempo de carro)</label><input type="number" id="pace" value="110" min="70" max="200" step="5"></div>
+        <div><label for="stopEvery">Parar a cada (min)</label><input type="number" id="stopEvery" value="120" min="0" step="10"></div>
+        <div><label for="stopDur">Parada dura (min)</label><input type="number" id="stopDur" value="20" min="0" step="5"></div>
+        <div><label for="span">Comparar saídas</label>
+          <select id="span">
+            <option value="-120,180,60">2 h antes a 3 h depois</option>
+            <option value="-60,60,30">1 h antes a 1 h depois</option>
+            <option value="-180,180,60">3 h antes a 3 h depois</option>
+            <option value="0,0,60">só a hora escolhida</option>
+          </select></div>
+        <div><label for="model">Modelo</label>
+          <select id="model">
+            <option value="best_match">Automático (melhor)</option>
+            <option value="ecmwf_ifs025">ECMWF (europeu)</option>
+            <option value="gfs_seamless">GFS (americano)</option>
+            <option value="icon_seamless">ICON (alemão)</option>
+          </select></div>
+      </div>
+      <p class="hint">Ritmo 110% = 10% mais lento que o tempo de carro do roteador. Parar a cada 0 = sem paradas. A sensação térmica usa a velocidade média de cada trecho.</p>
+    </details>
+    <button class="primary" id="go" type="button">Ver o tempo no trajeto</button>
+    <p id="status" role="status"></p>
+  </section>
+
+  <section id="result" hidden>
+    <div class="card">
+      <div class="stats" id="stats"></div>
+      <div class="links" id="links"></div>
+    </div>
+    <div class="card">
+      <h2>Qual horário de saída?</h2>
+      <div class="axis"><span></span><div><span>saída</span><span>chegada</span></div></div>
+      <div class="grid" id="grid"></div>
+      <div class="legend">
+        <span><i class="lv0"></i>tranquilo</span><span><i class="lv1"></i>atenção</span>
+        <span><i class="lv2"></i>ruim</span><span><i class="lv3"></i>perigoso</span><span><i class="lvx"></i>sem dado</span>
+      </div>
+      <div class="legend">
+        <span>faixa fina = luz do dia:</span><span><i class="sun-day"></i>☀ claro</span><span><i class="sun-twi"></i>◐ amanhecendo / anoitecendo</span><span><i class="sun-night"></i>☾ escuro</span>
+      </div>
+    </div>
+    <div class="card"><div id="map"></div></div>
+    <div class="card">
+      <h2 id="tlTitle">Trecho a trecho</h2>
+      <ol class="tl" id="timeline"></ol>
+    </div>
+    <p class="note">
+      Previsão: Open-Meteo. Rota: OSRM/OpenStreetMap (pode diferir da do Google; use "passar por" para forçar o caminho).
+      Pancadas de verão são difíceis de prever no lugar e na hora exatos: no dia, confira o radar antes de sair.
+      Vento lateral = componente da rajada perpendicular à estrada naquele trecho.
+      Sensação térmica = índice de wind chill com o ar que bate no piloto (velocidade média do trecho somada ao vento contra ou a favor); vale para pele exposta, não para quem está dentro da jaqueta; acima de 25° ela é igual à temperatura.
+    </p>
+  </section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const LV_TXT = ['tranquilo', 'atenção', 'ruim', 'perigoso'];
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const pad = n => String(n).padStart(2, '0');
+const hhmm = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const fmt1 = x => (Math.round(x * 10) / 10).toLocaleString('pt-BR');
+const fmtDur = s => { const m = Math.round(s / 60); return `${Math.floor(m / 60)}h${pad(m % 60)}`; };
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+function setStatus(msg, err) { const el = $('#status'); el.textContent = msg || ''; el.className = err ? 'err' : ''; }
+
+/* ---------- Endereços (Photon / OpenStreetMap) ---------- */
+const COORD_RE = /^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/;
+function photonLabel(p) {
+  const pr = p.properties;
+  const where = [pr.city && pr.city !== pr.name ? pr.city : null, pr.state].filter(Boolean).join(' – ');
+  const main = [pr.name || pr.street, pr.housenumber].filter(Boolean).join(', ');
+  return { main: main || where, sub: main ? where : (pr.country || '') };
+}
+async function photonSearch(q, limit = 6) {
+  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=${limit}&lat=-23.5&lon=-46.6&bbox=-74,-34,-34,5`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('Busca de endereço falhou');
+  return (await r.json()).features.map(f => {
+    const l = photonLabel(f);
+    return { label: l.sub ? `${l.main}, ${l.sub}` : l.main, main: l.main, sub: l.sub, lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] };
+  });
+}
+function setupAC(input) {
+  const ul = input.parentElement.querySelector('ul');
+  let timer, items = [], active = -1;
+  const render = () => {
+    ul.innerHTML = items.map((it, i) => `<li data-i="${i}" class="${i === active ? 'on' : ''}">${esc(it.main)}<br><small>${esc(it.sub)}</small></li>`).join('');
+  };
+  const pick = i => { const it = items[i]; if (!it) return; input.value = it.label; input.place = it; items = []; render(); };
+  input.addEventListener('input', () => {
+    input.place = null; clearTimeout(timer);
+    const q = input.value.trim();
+    if (q.length < 3 || COORD_RE.test(q)) { items = []; render(); return; }
+    timer = setTimeout(async () => {
+      try { items = await photonSearch(q); active = -1; render(); } catch { /* silencioso */ }
+    }, 280);
+  });
+  input.addEventListener('keydown', e => {
+    if (!items.length) return;
+    if (e.key === 'ArrowDown') { active = Math.min(items.length - 1, active + 1); render(); e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { active = Math.max(0, active - 1); render(); e.preventDefault(); }
+    else if (e.key === 'Enter' && active >= 0) { pick(active); e.preventDefault(); }
+    else if (e.key === 'Escape') { items = []; render(); }
+  });
+  ul.addEventListener('mousedown', e => { const li = e.target.closest('li'); if (li) { e.preventDefault(); pick(+li.dataset.i); } });
+  input.addEventListener('blur', () => setTimeout(() => { items = []; render(); }, 150));
+}
+async function resolvePlace(input, what) {
+  const q = input.value.trim();
+  if (input.place && input.place.label === q) return input.place;
+  if (!q) throw new Error(`Preencha "${what}".`);
+  const m = q.match(COORD_RE);
+  if (m) return input.place = { label: q, lat: +m[1], lon: +m[2] };
+  const res = await photonSearch(q, 1);
+  if (!res.length) throw new Error(`Não encontrei "${q}".`);
+  return input.place = res[0];
+}
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/* ---------- Link do Google Maps ---------- */
+function parseGmaps(url) {
+  if (/goo\.gl|maps\.app/.test(url)) throw new Error('Link curto do Google não pode ser lido daqui. Abra o link no navegador e copie o endereço completo (…/maps/dir/…).');
+  const u = new URL(url);
+  if (u.searchParams.get('api') === '1') {
+    const pts = [u.searchParams.get('origin'), ...(u.searchParams.get('waypoints') || '').split('|'), u.searchParams.get('destination')];
+    return pts.filter(Boolean);
+  }
+  const m = u.pathname.match(/\/maps\/dir\/(.+)/);
+  if (!m) throw new Error('Esse link não parece ser uma rota (…/maps/dir/…).');
+  return m[1].split('/').filter(s => s && !s.startsWith('@') && !s.startsWith('data=') && !s.startsWith('am='))
+    .map(s => decodeURIComponent(s.replace(/\+/g, ' ')));
+}
+
+/* ---------- Rota (OSRM) ---------- */
+async function getRoute(places) {
+  const coords = places.map(p => `${p.lon.toFixed(5)},${p.lat.toFixed(5)}`).join(';');
+  const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&annotations=duration,distance&steps=true`);
+  const d = await r.json();
+  if (d.code !== 'Ok') throw new Error('Não consegui traçar a rota (' + (d.message || d.code) + ').');
+  const rt = d.routes[0];
+  const pts = rt.geometry.coordinates.map(c => [c[1], c[0]]);
+  const segT = [], segD = [];
+  rt.legs.forEach(l => { segT.push(...l.annotation.duration); segD.push(...l.annotation.distance); });
+  if (segT.length !== pts.length - 1) throw new Error('Rota veio num formato inesperado.');
+  const cumT = [0], cumD = [0];
+  segT.forEach((t, i) => { cumT.push(cumT[i] + t); cumD.push(cumD[i] + segD[i]); });
+  const steps = []; let acc = 0;
+  rt.legs.forEach(l => l.steps.forEach(s => { acc += s.distance; steps.push({ end: acc, ref: s.ref, name: s.name }); }));
+  return { pts, cumT, cumD, steps, distance: rt.distance, duration: rt.duration };
+}
+function lowerIdx(arr, v) { let lo = 0, hi = arr.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (arr[mid] <= v) lo = mid; else hi = mid - 1; } return lo; }
+function interp(route, arr, v) {
+  const i = Math.min(lowerIdx(arr, v), arr.length - 2);
+  const span = arr[i + 1] - arr[i], f = span > 0 ? Math.min(1, Math.max(0, (v - arr[i]) / span)) : 0;
+  const a = route.pts[i], b = route.pts[i + 1];
+  return { lat: a[0] + (b[0] - a[0]) * f, lon: a[1] + (b[1] - a[1]) * f, idx: i, dist: route.cumD[i] + (route.cumD[i + 1] - route.cumD[i]) * f };
+}
+function bearing(a, b) {
+  const r = Math.PI / 180, y = Math.sin((b.lon - a.lon) * r) * Math.cos(b.lat * r);
+  const x = Math.cos(a.lat * r) * Math.sin(b.lat * r) - Math.sin(a.lat * r) * Math.cos(b.lat * r) * Math.cos((b.lon - a.lon) * r);
+  return (Math.atan2(y, x) / r + 360) % 360;
+}
+function roadAt(route, dist) {
+  const s = route.steps.find(s => s.end >= dist) || route.steps[route.steps.length - 1];
+  const ref = (s.ref || '').split(';')[0].trim();
+  return ref || s.name || '';
+}
+
+/* Pontos de amostragem: a cada 15 min de pilotagem + os momentos de parada. */
+function samplePoints(route, cfg) {
+  const pace = cfg.pace / 100, total = route.duration * pace;   // segundos de pilotagem
+  const E = cfg.stopEvery * 60, D = cfg.stopDur * 60;
+  const marks = new Map();
+  for (let r = 0; r < total - 300; r += 900) marks.set(Math.round(r), false);
+  if (E > 0) for (let r = E; r < total - 1800; r += E) marks.set(Math.round(r), true);   // sem parada nos últimos 30 min
+  marks.set(Math.round(total), false);
+  const rides = [...marks.keys()].sort((a, b) => a - b);
+  const stopAt = rides.filter(r => marks.get(r));
+  return rides.map((ride, k) => {
+    const p = interp(route, route.cumT, ride / pace);
+    const back = interp(route, route.cumD, Math.max(0, p.dist - 1500)), fwd = interp(route, route.cumD, Math.min(route.distance, p.dist + 1500));
+    const stopsBefore = D > 0 ? stopAt.filter(r => r < ride).length : 0;
+    return {
+      lat: p.lat, lon: p.lon, idx: p.idx, dist: p.dist, ride,
+      elapsed: ride + stopsBefore * D,
+      heading: bearing(back, fwd), road: roadAt(route, p.dist),
+      stop: marks.get(ride) && E > 0 && D > 0, first: k === 0, last: k === rides.length - 1,
+    };
+  }).map((pt, k, arr) => {
+    const a = arr[Math.max(0, k - 1)], b = arr[Math.min(arr.length - 1, k + 1)];
+    pt.speed = b.ride > a.ride ? Math.round((b.dist - a.dist) / (b.ride - a.ride) * 3.6) : 0;   // km/h médio em volta do ponto
+    return pt;
+  });
+}
+
+/* Posição do sol (aprox. ±0,5°): elevação e azimute a partir do norte. */
+function sunPos(tMs, lat, lon) {
+  const r = Math.PI / 180, d = tMs / 864e5 - 10957.5;
+  const g = (357.529 + 0.98560028 * d) * r, q = 280.459 + 0.98564736 * d;
+  const L = (q + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * r, e = (23.439 - 0.00000036 * d) * r;
+  const ra = Math.atan2(Math.cos(e) * Math.sin(L), Math.cos(L)), dec = Math.asin(Math.sin(e) * Math.sin(L));
+  const gmst = ((18.697374558 + 24.06570982441908 * d) % 24 + 24) % 24;
+  const ha = (gmst * 15 + lon) * r - ra, la = lat * r;
+  const elev = Math.asin(Math.sin(la) * Math.sin(dec) + Math.cos(la) * Math.cos(dec) * Math.cos(ha));
+  const az = Math.atan2(-Math.sin(ha), Math.tan(dec) * Math.cos(la) - Math.sin(la) * Math.cos(ha));
+  return { elev: elev / r, az: (az / r + 360) % 360 };
+}
+function lightAt(tMs, pt) {
+  const s = sunPos(tMs, pt.lat, pt.lon);
+  if (s.elev >= -0.833) return { ...s, cls: 'sun-day', txt: '☀ claro' };
+  if (s.elev >= -6) return { ...s, cls: 'sun-twi', txt: s.az < 180 ? '◐ amanhecendo' : '◐ anoitecendo' };
+  return { ...s, cls: 'sun-night', txt: '☾ escuro' };
+}
+
+/* ---------- Tempo (Open-Meteo) ---------- */
+const HOURLY = ['temperature_2m', 'precipitation', 'precipitation_probability', 'weather_code', 'wind_speed_10m', 'wind_direction_10m', 'wind_gusts_10m', 'visibility', 'cape'];
+async function getWeather(points, untilMs, model) {
+  const today0 = new Date(); today0.setHours(0, 0, 0, 0);
+  const days = Math.ceil((untilMs - today0) / 864e5) + 1;
+  if (days > 16) throw new Error('A previsão só vai até 16 dias à frente.');
+  const lat = points.map(p => p.lat.toFixed(3)).join(','), lon = points.map(p => p.lon.toFixed(3)).join(',');
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=${HOURLY.join(',')}` +
+    `&past_days=1&forecast_days=${Math.max(2, days)}&timeformat=unixtime&timezone=GMT&wind_speed_unit=kmh&models=${model}`;
+  const r = await fetch(url);
+  const d = await r.json();
+  if (d.error) throw new Error('Previsão: ' + d.reason);
+  return Array.isArray(d) ? d : [d];
+}
+function weatherAt(w, tMs) {
+  const h = w.hourly, T = Math.ceil(tMs / 36e5) * 3600;   // valor da hora cheia seguinte cobre a hora em que você passa
+  const i = (T - h.time[0]) / 3600;
+  if (i < 0 || i >= h.time.length) return null;
+  const v = k => h[k] ? h[k][i] : null;
+  let prior = 0;
+  for (let j = Math.max(0, i - 6); j < i; j++) prior += h.precipitation[j] || 0;
+  const out = { temp: v('temperature_2m'), precip: v('precipitation'), prob: v('precipitation_probability'), code: v('weather_code'),
+    wind: v('wind_speed_10m'), dir: v('wind_direction_10m'), gust: v('wind_gusts_10m'), vis: v('visibility'), cape: v('cape'), prior6: prior };
+  return out.temp == null && out.precip == null ? null : out;
+}
+const WMO = { 0: 'céu limpo', 1: 'quase limpo', 2: 'parcialmente nublado', 3: 'nublado', 45: 'neblina', 48: 'neblina com geada',
+  51: 'garoa fraca', 53: 'garoa', 55: 'garoa forte', 56: 'garoa congelante', 57: 'garoa congelante', 61: 'chuva fraca', 63: 'chuva', 65: 'chuva forte',
+  66: 'chuva congelante', 67: 'chuva congelante', 71: 'neve', 73: 'neve', 75: 'neve', 77: 'neve', 80: 'pancadas fracas', 81: 'pancadas', 82: 'pancadas fortes',
+  85: 'neve', 86: 'neve', 95: 'trovoada', 96: 'trovoada com granizo', 99: 'trovoada com granizo' };
+function windChill(t, v) { const p = Math.pow(v, 0.16); return 13.12 + 0.6215 * t - 11.37 * p + 0.3965 * t * p; }
+
+function assess(w, pt, sun) {
+  if (!w) return { lvl: -1, alerts: [] };
+  const alerts = []; let lvl = 0;
+  const up = (l, txt) => { alerts.push({ l, txt }); lvl = Math.max(lvl, l); };
+  const p = w.precip ?? 0, pp = w.prob;
+  if (w.code >= 95) up(3, w.code > 95 ? 'Trovoada com granizo' : 'Trovoada');
+  if (p >= 5) up(3, `Chuva forte ${fmt1(p)} mm/h`);
+  else if (p >= 1.5) up(2, `Chuva ${fmt1(p)} mm/h`);
+  else if (p >= 0.2) up(1, `Chuva fraca ${fmt1(p)} mm/h`);
+  if (p < 1.5 && pp != null && pp >= 60) up(Math.max(1, Math.min(2, Math.floor((pp - 40) / 20))), `Chance de chuva ${pp}%`);
+  else if (p < 0.2 && pp != null && pp >= 50) up(1, `Chance de chuva ${pp}%`);
+  if (w.code < 95 && w.cape >= 1500 && (pp ?? 0) >= 30) up(2, 'Ar instável: risco de temporal');
+  if (p < 0.2 && w.prior6 >= 1) up(w.prior6 >= 8 ? 2 : 1, `Pista molhada? ${fmt1(w.prior6)} mm nas 6 h antes`);
+  if (w.gust != null && w.dir != null) {
+    const rel = ((w.dir - pt.heading) % 360 + 360) % 360;
+    const cross = Math.abs(w.gust * Math.sin(rel * Math.PI / 180));
+    const side = rel < 180 ? 'pela direita' : 'pela esquerda';
+    w.cross = cross; w.side = side;
+    w.head = w.gust * Math.cos(rel * Math.PI / 180);
+    if (cross >= 65) up(3, `Rajada lateral ${Math.round(cross)} km/h ${side}`);
+    else if (cross >= 50) up(2, `Rajada lateral ${Math.round(cross)} km/h ${side}`);
+    else if (cross >= 35) up(1, `Rajada lateral ${Math.round(cross)} km/h ${side}`);
+    if (w.gust >= 70 && cross < 65) up(2, `Rajadas de ${Math.round(w.gust)} km/h`);
+  }
+  if (w.vis != null) {
+    if (w.vis < 300) up(3, `Neblina densa (visib. ${Math.round(w.vis)} m)`);
+    else if (w.vis < 1000) up(2, `Neblina (visib. ${Math.round(w.vis)} m)`);
+    else if (w.vis < 3000) up(1, `Visibilidade ${fmt1(w.vis / 1000)} km`);
+  }
+  if (w.temp != null) {
+    // Ar que bate no piloto = velocidade da moto somada ao vento real (contra soma, a favor subtrai).
+    const rel = w.dir != null ? (w.dir - pt.heading) * Math.PI / 180 : 0, u = w.wind ?? 0;
+    w.air = Math.sqrt(pt.speed ** 2 + u ** 2 + 2 * pt.speed * u * Math.cos(rel));
+    w.headwind = u * Math.cos(rel);
+    w.chill = w.temp <= 25 && w.air > 5 ? Math.min(w.temp, windChill(w.temp, w.air)) : w.temp;
+    if (w.chill < 0) up(2, `Muito frio: sensação ${Math.round(w.chill)}°`);
+    else if (w.chill < 5) up(1, `Frio: sensação ${Math.round(w.chill)}°`);
+    if (w.temp >= 34) up(1, `Calor ${Math.round(w.temp)}°`);
+  }
+  if (sun && sun.elev > -0.833 && sun.elev < 15 && w.code <= 2) {
+    const off = Math.abs(((sun.az - pt.heading) % 360 + 540) % 360 - 180);
+    if (off < 30) up(1, 'Sol baixo de frente (ofuscamento)');
+  }
+  return { lvl, alerts };
+}
+
+/* ---------- Estado e renderização ---------- */
+let S = null, map = null, mapLayers = null;
+
+function readCfg() {
+  return {
+    pace: +$('#pace').value || 100, stopEvery: +$('#stopEvery').value || 0, stopDur: +$('#stopDur').value || 0,
+    span: $('#span').value, model: $('#model').value,
+    date: $('#date').value, time: $('#time').value,
+  };
+}
+function evaluate(points, weather, depMs) {
+  return points.map((pt, i) => {
+    const t = depMs + pt.elapsed * 1000;
+    const w = weatherAt(weather[i], t), sun = lightAt(t, pt);
+    return { t, w, sun, ...assess(w, pt, sun) };
+  });
+}
+
+async function run() {
+  const btn = $('#go'); btn.disabled = true;
+  try {
+    const cfg = readCfg();
+    const g = $('#gmaps').value.trim();
+    let places;
+    setStatus('Procurando os endereços…');
+    if (g) {
+      const names = parseGmaps(g);
+      if (names.length < 2) throw new Error('O link precisa ter origem e destino.');
+      places = [];
+      for (const n of names) {
+        const m = n.match(COORD_RE);
+        if (m) { places.push({ label: n, lat: +m[1], lon: +m[2] }); continue; }
+        const r = await photonSearch(n, 1);
+        if (!r.length) throw new Error(`Não encontrei "${n}".`);
+        places.push(r[0]);
+      }
+    } else {
+      places = [await resolvePlace($('#orig'), 'Saindo de')];
+      for (const inp of document.querySelectorAll('#vias input')) if (inp.value.trim()) places.push(await resolvePlace(inp, 'Passar por'));
+      places.push(await resolvePlace($('#dest'), 'Indo para'));
+    }
+    if (!cfg.date || !cfg.time) throw new Error('Escolha o dia e a hora de saída.');
+    const dep = new Date(`${cfg.date}T${cfg.time}`).getTime();
+
+    setStatus('Traçando a rota…');
+    const route = await getRoute(places);
+    const points = samplePoints(route, cfg);
+    const [a, b, step] = cfg.span.split(',').map(Number);
+    const offsets = []; for (let o = a; o <= b; o += step) offsets.push(o);
+    const lastPt = points[points.length - 1];
+    const until = dep + (b * 60 + lastPt.elapsed) * 1000;
+
+    setStatus(`Buscando a previsão para ${points.length} pontos…`);
+    const weather = await getWeather(points, until, cfg.model);
+    const scen = offsets.map(o => ({ off: o, dep: dep + o * 60000, ev: evaluate(points, weather, dep + o * 60000) }));
+    S = { places, route, points, weather, scen, cfg, sel: offsets.indexOf(0) >= 0 ? offsets.indexOf(0) : 0 };
+    saveState(places, cfg);
+    $('#result').hidden = false;
+    renderAll();
+    setStatus('');
+    $('#result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    fillPlaceNames();
+  } catch (e) {
+    console.error(e);
+    setStatus(e.message || String(e), true);
+  } finally { btn.disabled = false; }
+}
+
+// Escolha da melhor janela: tempo ruim pesa mais; pilotar no escuro também conta.
+function scenScore(sc) {
+  return sc.ev.reduce((s, e) => s + (e.lvl > 0 ? e.lvl * e.lvl : 0) + (e.sun.cls === 'sun-night' ? 1.5 : e.sun.cls === 'sun-twi' ? 0.75 : 0), 0);
+}
+function scenSummary(sc) {
+  const rain = sc.ev.filter(e => e.w && ((e.w.precip ?? 0) >= 0.2 || e.w.code >= 95)).length;
+  const wet = sc.ev.filter(e => e.alerts.some(a => a.txt.startsWith('Pista'))).length;
+  const maxCross = Math.max(0, ...sc.ev.map(e => e.w?.cross ?? 0));
+  const parts = [`chega ${hhmm(new Date(sc.ev[sc.ev.length - 1].t))}`];
+  parts.push(rain ? `chuva em ${rain} ponto${rain > 1 ? 's' : ''}` : 'sem chuva');
+  if (wet) parts.push(`pista molhada em ${wet}`);
+  parts.push(`lateral máx ${Math.round(maxCross)} km/h`);
+  const temps = sc.ev.filter(e => e.w && e.w.temp != null);
+  if (temps.length) parts.push(`${Math.round(Math.min(...temps.map(e => e.w.temp)))}–${Math.round(Math.max(...temps.map(e => e.w.temp)))}°, sensação mín ${Math.round(Math.min(...temps.map(e => e.w.chill)))}°`);
+  const dark = sc.ev.filter(e => e.sun.cls !== 'sun-day').length;
+  if (dark) parts.push(`${dark} ponto${dark > 1 ? 's' : ''} no escuro/lusco-fusco`);
+  return parts.join(' · ');
+}
+
+function renderAll() {
+  const { route, points, cfg, places } = S;
+  const lastPt = points[points.length - 1];
+  const stops = points.filter(p => p.stop).length;
+  $('#stats').innerHTML = [
+    [`${Math.round(route.distance / 1000)} km`, 'distância'],
+    [fmtDur(lastPt.ride), 'pilotando'],
+    [stops ? `${stops} × ${cfg.stopDur} min` : 'nenhuma', 'paradas'],
+    [fmtDur(lastPt.elapsed), 'porta a porta'],
+  ].map(([b, s]) => `<div><b>${b}</b><span>${s}</span></div>`).join('');
+  const o = places[0], d = places[places.length - 1], via = places.slice(1, -1);
+  const gm = `https://www.google.com/maps/dir/?api=1&travelmode=driving&origin=${o.lat},${o.lon}&destination=${d.lat},${d.lon}` +
+    (via.length ? `&waypoints=${via.map(p => `${p.lat},${p.lon}`).join('|')}` : '');
+  const mid = points[Math.floor(points.length / 2)];
+  $('#links').innerHTML =
+    `<a href="${gm}" target="_blank" rel="noopener">Abrir no Google Maps (acidentes e obras)</a>` +
+    `<a href="https://www.windy.com/-Weather-radar-radar?radar,${mid.lat.toFixed(2)},${mid.lon.toFixed(2)},7" target="_blank" rel="noopener">Radar ao vivo (Windy)</a>` +
+    `<a href="#" id="share">Copiar link desta viagem</a>`;
+  $('#share').onclick = e => {
+    e.preventDefault();
+    navigator.clipboard?.writeText(location.href).then(() => { e.target.textContent = 'Link copiado'; }, () => prompt('Copie o link:', location.href));
+  };
+  renderGrid();
+  renderSel();
+}
+
+function renderGrid() {
+  const scores = S.scen.map(scenScore), best = Math.min(...scores);
+  const bestIdx = scores.length > 1 ? scores.indexOf(best) : -1;
+  $('#grid').innerHTML = S.scen.map((sc, k) => {
+    const cells = sc.ev.map((e, i) => {
+      const tip = `${hhmm(new Date(e.t))} · km ${Math.round(S.points[i].dist / 1000)}${e.alerts.length ? ' · ' + e.alerts.map(a => a.txt).join('; ') : ''}`;
+      return `<i class="${e.lvl < 0 ? 'lvx' : 'lv' + e.lvl}" title="${esc(tip)}"></i>`;
+    }).join('');
+    const offTxt = sc.off === 0 ? 'planejada' : `${sc.off > 0 ? '+' : '−'}${Math.abs(sc.off) >= 60 && Math.abs(sc.off) % 60 === 0 ? Math.abs(sc.off) / 60 + ' h' : Math.abs(sc.off) + ' min'}`;
+    return `<div class="grow${k === S.sel ? ' sel' : ''}" data-k="${k}" role="button" tabindex="0">
+      <div class="hr">${hhmm(new Date(sc.dep))}<small>${offTxt}</small></div>
+      <div class="gcol"><div class="cells">${cells}</div><div class="cells sun">${sc.ev.map(e => `<i class="${e.sun.cls}" title="${hhmm(new Date(e.t))} · ${e.sun.txt}"></i>`).join('')}</div></div>
+      <div class="gsum">${k === bestIdx ? '<span class="best">★ melhor janela</span> · ' : ''}${scenSummary(sc)}</div>
+    </div>`;
+  }).join('');
+  document.querySelectorAll('.grow').forEach(el => {
+    const pick = () => { S.sel = +el.dataset.k; document.querySelectorAll('.grow').forEach(x => x.classList.toggle('sel', x === el)); renderSel(); };
+    el.onclick = pick; el.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } };
+  });
+}
+
+function levelColor(l) { return l < 0 ? css('--line') : css('--l' + l); }
+
+function renderSel() {
+  const sc = S.scen[S.sel], { points, route } = S;
+  $('#tlTitle').textContent = `Trecho a trecho, saindo às ${hhmm(new Date(sc.dep))}`;
+  $('#timeline').innerHTML = points.map((pt, i) => {
+    const e = sc.ev[i], w = e.w;
+    const label = pt.first ? 'Saída' : pt.last ? 'Chegada' : '';
+    let wline = 'sem previsão para este horário', tline = '';
+    const lt = `<span class="lt ${e.sun.cls}">${e.sun.txt}</span>`;
+    if (w) {
+      tline = w.temp != null
+        ? `<b>${Math.round(w.temp)}°</b> · sensação <b>${Math.round(w.chill)}°</b> · moto a ${pt.speed} km/h` +
+          (Math.abs(w.headwind) >= 5 ? `, vento ${w.headwind > 0 ? 'contra' : 'a favor'} ${Math.round(Math.abs(w.headwind))}` : '') + ` ${lt}`
+        : lt;
+      const bits = [WMO[w.code] || ''];
+      bits.push(`chuva ${fmt1(w.precip ?? 0)} mm${w.prob != null ? ` (${w.prob}%)` : ''}`);
+      if (w.gust != null) bits.push(`rajada ${Math.round(w.gust)} km/h, lateral ${Math.round(w.cross ?? 0)}`);
+      bits.push(`6 h antes: ${fmt1(w.prior6)} mm`);
+      wline = bits.filter(Boolean).join(' · ');
+    }
+    const chips = (pt.stop ? [`<span class="chip stop">Parada ${S.cfg.stopDur} min</span>`] : [])
+      .concat(e.alerts.filter(a => a.l > 0).map(a => `<span class="chip c${a.l}">${esc(a.txt)}</span>`)).join('');
+    return `<li>
+      <div class="t" style="border-left-color:${levelColor(e.lvl)}">${hhmm(new Date(e.t))}<small>km ${Math.round(pt.dist / 1000)}</small></div>
+      <div><div class="p"><span class="place" data-i="${i}">${label || '…'}</span> <small>${esc(pt.road)}</small></div>
+        <div class="tmp">${tline || lt}</div>
+        <div class="w">${esc(wline)}</div>${chips ? `<div class="chips">${chips}</div>` : ''}</div>
+    </li>`;
+  }).join('');
+  applyPlaceNames();
+  renderMap(sc);
+}
+
+function renderMap(sc) {
+  if (!window.L) return;
+  if (!map) {
+    map = L.map('map', { zoomControl: true, attributionControl: true });
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18, attribution: '© OpenStreetMap',
+    }).addTo(map);
+  }
+  if (mapLayers) mapLayers.remove();
+  mapLayers = L.layerGroup().addTo(map);
+  const { points, route } = S;
+  for (let i = 0; i < points.length - 1; i++) {
+    const seg = route.pts.slice(points[i].idx, points[i + 1].idx + 2);
+    seg[0] = [points[i].lat, points[i].lon]; seg[seg.length - 1] = [points[i + 1].lat, points[i + 1].lon];
+    L.polyline(seg, { color: levelColor(sc.ev[i].lvl), weight: 6, opacity: .9 }).addTo(mapLayers);
+  }
+  points.forEach((pt, i) => {
+    const e = sc.ev[i];
+    const html = `<b>${hhmm(new Date(e.t))}</b> · km ${Math.round(pt.dist / 1000)} ${esc(pt.road)}<br>` +
+      (e.w && e.w.temp != null ? `${Math.round(e.w.temp)}° · sensação ${Math.round(e.w.chill)}° · ${e.sun.txt}<br>` : `${e.sun.txt}<br>`) +
+      (e.alerts.length ? e.alerts.map(a => esc(a.txt)).join('<br>') : 'sem alertas');
+    L.circleMarker([pt.lat, pt.lon], { radius: pt.stop || pt.first || pt.last ? 7 : 4, color: '#fff', weight: 1.5, fillColor: levelColor(e.lvl), fillOpacity: 1 })
+      .bindPopup(html).addTo(mapLayers);
+  });
+  if (!map._fitted) { map.fitBounds(L.latLngBounds(route.pts), { padding: [16, 16] }); map._fitted = true; }
+}
+
+/* Nome da cidade de cada ponto (Photon reverso), em segundo plano. */
+const placeCache = {};
+function applyPlaceNames() {
+  document.querySelectorAll('.place').forEach(el => {
+    const pt = S.points[+el.dataset.i], nm = placeCache[key(pt)];
+    if (!nm) return;
+    el.textContent = pt.first ? `Saída · ${nm}` : pt.last ? `Chegada · ${nm}` : nm;
+  });
+}
+const key = pt => `${pt.lat.toFixed(2)},${pt.lon.toFixed(2)}`;
+async function fillPlaceNames() {
+  const mine = S;
+  for (const pt of mine.points) {
+    if (S !== mine) return;
+    const k = key(pt);
+    if (placeCache[k]) continue;
+    try {
+      const r = await fetch(`https://photon.komoot.io/reverse?lat=${pt.lat}&lon=${pt.lon}&limit=1`);
+      const f = (await r.json()).features[0];
+      if (f) { const p = f.properties; placeCache[k] = [p.city || p.county || p.name, p.state ? p.state.replace(/^(São Paulo|Paraná|Santa Catarina|Minas Gerais|Rio de Janeiro|Rio Grande do Sul)$/, m => UF[m]) : ''].filter(Boolean).join(' – '); }
+    } catch {}
+    applyPlaceNames();
+    await new Promise(r => setTimeout(r, 120));
+  }
+}
+const UF = { 'São Paulo': 'SP', 'Paraná': 'PR', 'Santa Catarina': 'SC', 'Minas Gerais': 'MG', 'Rio de Janeiro': 'RJ', 'Rio Grande do Sul': 'RS' };
+
+/* ---------- Paradas no caminho, persistência ---------- */
+function addVia(place) {
+  const div = document.createElement('div');
+  div.innerHTML = `<label>Passar por</label><div class="via"><div class="ac"><input placeholder="Cidade ou lugar no caminho" autocomplete="off"><ul></ul></div><button class="x" type="button" aria-label="Remover">✕</button></div>`;
+  $('#vias').appendChild(div);
+  const inp = div.querySelector('input');
+  setupAC(inp);
+  if (place) { inp.value = place.label; inp.place = place; }
+  div.querySelector('.x').onclick = () => div.remove();
+  return inp;
+}
+function saveState(places, cfg) {
+  const st = { places: places.map(p => ({ label: p.label, lat: +p.lat.toFixed(5), lon: +p.lon.toFixed(5) })), cfg };
+  store.set('motoTempo', st);
+  history.replaceState(null, '', '#' + encodeURIComponent(JSON.stringify(st)));
+}
+function loadState(st) {
+  const ps = st.places || [];
+  if (ps.length >= 2) {
+    $('#orig').value = ps[0].label; $('#orig').place = ps[0];
+    $('#dest').value = ps[ps.length - 1].label; $('#dest').place = ps[ps.length - 1];
+    $('#vias').innerHTML = '';
+    ps.slice(1, -1).forEach(addVia);
+  }
+  const c = st.cfg || {};
+  ['pace', 'stopEvery', 'stopDur', 'span', 'model'].forEach(k => { if (c[k] != null) $('#' + k).value = c[k]; });
+  return c;
+}
+
+/* ---------- Início ---------- */
+setupAC($('#orig')); setupAC($('#dest'));
+$('#addVia').onclick = () => addVia().focus();
+$('#go').onclick = run;
+$('#gmaps').addEventListener('input', () => { if ($('#gmaps').value) setStatus('Com o link preenchido, os campos acima são ignorados.'); else setStatus(''); });
+{
+  const now = new Date(); now.setMinutes(0, 0, 0); now.setHours(now.getHours() + 1);
+  $('#date').value = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  $('#time').value = hhmm(now);
+  let fromHash = null;
+  if (location.hash.length > 1) { try { fromHash = JSON.parse(decodeURIComponent(location.hash.slice(1))); } catch {} }
+  const st = fromHash || store.get('motoTempo');
+  if (st) {
+    const c = loadState(st);
+    if (fromHash && c.date && c.time) {
+      const when = new Date(`${c.date}T${c.time}`);
+      if (when > Date.now() - 6 * 36e5) { $('#date').value = c.date; $('#time').value = c.time; }
+      run();
+    }
+  }
+}
+</script>
+</body>
+</html>
