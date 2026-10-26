@@ -74,14 +74,15 @@ summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: 4px 
 .grow .hr small { display: block; font-weight: 400; font-size: .72rem; color: var(--muted); }
 .cells { display: flex; gap: 2px; height: 22px; }
 .cells i { flex: 1; border-radius: 3px; min-width: 3px; }
-.cells.sun { height: 6px; margin-top: 3px; }
-.cells.sun i { border-radius: 2px; }
-:root { --sun-day: #fbf9f3; --sun-twi: #8e94a3; --sun-night: #161a26; }
-:root[data-theme="dark"] { --sun-day: #e4e6ee; --sun-twi: #6c7389; --sun-night: #000000; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --sun-day: #e4e6ee; --sun-twi: #6c7389; --sun-night: #000000; } }
-.sun-day { background: var(--sun-day); box-shadow: inset 0 0 0 1px var(--line); }
-.sun-twi { background: var(--sun-twi); }
-.sun-night { background: var(--sun-night); box-shadow: inset 0 0 0 1px var(--line); }
+/* ícones de tempo */
+:root { --wi-sun: #eea200; --wi-moon: #7482ad; --wi-cloud: #c3c9d5; --wi-cloud-edge: #8a93a8; --wi-rain: #2a78e4; --wi-fog: #8a93a8; }
+:root[data-theme="dark"] { --wi-sun: #ffc23d; --wi-moon: #d9def0; --wi-cloud: #aeb6c8; --wi-cloud-edge: #aeb6c8; --wi-rain: #63a8ff; --wi-fog: #aeb6c8; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --wi-sun: #ffc23d; --wi-moon: #d9def0; --wi-cloud: #aeb6c8; --wi-cloud-edge: #aeb6c8; --wi-rain: #63a8ff; --wi-fog: #aeb6c8; } }
+svg.wi { display: block; overflow: visible; }
+.icons { display: flex; gap: 2px; height: 22px; margin-bottom: 3px; }
+.icons span { flex: 1; min-width: 3px; display: flex; justify-content: center; }
+.icons span svg { flex: none; width: 20px; height: 20px; }
+.legend svg.wi { display: inline-block; width: 18px; height: 18px; vertical-align: -4px; margin-right: 3px; }
 .gcol { min-width: 0; }
 .gsum { grid-column: 2; font-size: .8rem; color: var(--muted); margin-top: -2px; }
 .gsum .best { color: var(--accent); font-weight: 700; }
@@ -96,7 +97,7 @@ summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: 4px 
 :root[data-theme="dark"] .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.9); }
 /* trecho a trecho */
 .tl { list-style: none; margin: 0; padding: 0; }
-.tl li { display: grid; grid-template-columns: 58px 1fr; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+.tl li { display: grid; grid-template-columns: 58px 40px 1fr; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
 .tl li:first-child { border-top: 0; }
 .tl .t { font-weight: 700; font-variant-numeric: tabular-nums; border-left: 5px solid var(--line); padding-left: 8px; }
 .tl .t small { display: block; font-weight: 400; color: var(--muted); font-size: .75rem; }
@@ -105,8 +106,12 @@ summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: 4px 
 .tl .w { font-size: .85rem; color: var(--muted); margin-top: 2px; }
 .tl .tmp { font-size: .9rem; margin-top: 2px; }
 .tl .tmp b { font-size: 1.05rem; }
-.lt { display: inline-block; font-size: .75rem; padding: 1px 7px; border-radius: 999px; margin-left: 4px; vertical-align: 1px; }
-.lt.sun-day { color: #18213a; } .lt.sun-twi { color: #fff; } .lt.sun-night { color: #fff; }
+.tl .ic { text-align: center; }
+.tl .ic svg { width: 36px; height: 36px; margin: 0 auto; }
+.tl .ic small { display: block; font-size: .78rem; font-weight: 700; color: var(--wi-rain); margin-top: 1px; }
+.lt { display: inline-block; font-size: .75rem; padding: 0 7px; border-radius: 999px; margin-left: 4px; vertical-align: 1px; border: 1px solid var(--line); color: var(--muted); }
+.lt.sun-night { background: var(--ink); color: var(--card); border-color: var(--ink); }
+.lt.sun-twi { border-style: dashed; border-color: var(--muted); }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .chip { font-size: .78rem; padding: 2px 8px; border-radius: 999px; border: 1px solid; }
 .chip.c1 { background: var(--l1-bg); border-color: var(--l1); }
@@ -179,9 +184,7 @@ summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: 4px 
         <span><i class="lv0"></i>tranquilo</span><span><i class="lv1"></i>atenção</span>
         <span><i class="lv2"></i>ruim</span><span><i class="lv3"></i>perigoso</span><span><i class="lvx"></i>sem dado</span>
       </div>
-      <div class="legend">
-        <span>faixa fina = luz do dia:</span><span><i class="sun-day"></i>☀ claro</span><span><i class="sun-twi"></i>◐ amanhecendo / anoitecendo</span><span><i class="sun-night"></i>☾ escuro</span>
-      </div>
+      <div class="legend" id="iconLegend"></div>
     </div>
     <div class="card"><div id="map"></div></div>
     <div class="card">
@@ -439,6 +442,67 @@ function assess(w, pt, sun) {
   return { lvl, alerts };
 }
 
+/* ---------- Ícones de tempo (SVG desenhado aqui, cores pelo tema) ---------- */
+const WI_LABEL = { sun: 'céu limpo', moon: 'céu limpo, noite', 'sun-cloud': 'sol entre nuvens', 'moon-cloud': 'nuvens, noite', cloud: 'nublado',
+  drizzle: 'garoa', rain: 'chuva', heavy: 'chuva forte', storm: 'trovoada', fog: 'neblina', twilight: 'amanhecendo / anoitecendo' };
+(function buildIcons() {
+  const ray = (cx, cy, r1, r2, n, a0 = 0, a1 = 360) => {
+    let s = '';
+    for (let k = 0; k < n; k++) {
+      const a = (a0 + (a1 - a0) * k / (a1 - a0 === 360 ? n : n - 1)) * Math.PI / 180;
+      s += `<line x1="${(cx + r1 * Math.cos(a)).toFixed(1)}" y1="${(cy + r1 * Math.sin(a)).toFixed(1)}" x2="${(cx + r2 * Math.cos(a)).toFixed(1)}" y2="${(cy + r2 * Math.sin(a)).toFixed(1)}"/>`;
+    }
+    return s;
+  };
+  const sun = (cx, cy, r) => `<g fill="var(--wi-sun)" stroke="var(--wi-sun)" stroke-width="2.2" stroke-linecap="round"><circle cx="${cx}" cy="${cy}" r="${r}" stroke="none"/>${ray(cx, cy, r + 2.6, r + 5.4, 8)}</g>`;
+  const moon = (cx, cy, r) => `<path fill="var(--wi-moon)" d="M${cx + r * .3} ${cy - r * .95}A${r} ${r} 0 1 0 ${cx + r * .95} ${cy + r * .3}A${r * .78} ${r * .78} 0 0 1 ${cx + r * .3} ${cy - r * .95}Z"/>`;
+  const cloud = t => `<path transform="${t}" fill="var(--wi-cloud)" stroke="var(--wi-cloud-edge)" stroke-width="1.2" d="M8 26h16a6 6 0 0 0 .8-11.95A8.5 8.5 0 0 0 8.6 15.2A5.5 5.5 0 0 0 8 26Z"/>`;
+  const lines = (pts, color, w = 2.2) => `<g stroke="${color}" stroke-width="${w}" stroke-linecap="round">${pts.map(p => `<line x1="${p[0]}" y1="${p[1]}" x2="${p[2]}" y2="${p[3]}"/>`).join('')}</g>`;
+  const up = 'translate(0,-6)', upN = 'translate(4.5,-5) scale(.86)';
+  const below = {
+    drizzle: lines([[11, 23, 10.5, 25], [16, 25, 15.5, 27], [21, 23, 20.5, 25]], 'var(--wi-rain)'),
+    rain: lines([[12, 22, 10, 28], [17, 22, 15, 28], [22, 22, 20, 28]], 'var(--wi-rain)'),
+    heavy: lines([[9, 22, 7, 29], [13.5, 22, 11.5, 29], [18, 22, 16, 29], [22.5, 22, 20.5, 29], [27, 22, 25, 29]], 'var(--wi-rain)', 2.4),
+    storm: lines([[10, 22, 8.5, 26], [24, 22, 22.5, 26]], 'var(--wi-rain)') + '<path fill="var(--wi-sun)" d="M17.5 19.5L12.5 26.5H16L14 31.5L21 23.5H17.3L19.5 19.5Z"/>',
+    fog: lines([[6, 23.5, 26, 23.5], [9, 27.5, 29, 27.5]], 'var(--wi-fog)', 2.4),
+  };
+  const sym = {
+    sun: sun(16, 16, 6.5),
+    moon: moon(16, 16, 10),
+    'sun-cloud': sun(11, 11, 4.5) + cloud('translate(5,4) scale(.85)'),
+    'moon-cloud': moon(11, 11, 7) + cloud('translate(5,4) scale(.85)'),
+    cloud: cloud('translate(0,-1)'),
+    'cloud-n': moon(9, 9, 7) + cloud('translate(4,1) scale(.88)'),
+    twilight: `<path fill="var(--wi-sun)" d="M9.5 22A6.5 6.5 0 0 1 22.5 22Z"/><g stroke="var(--wi-sun)" stroke-width="2.2" stroke-linecap="round">${ray(16, 22, 9, 11.8, 5, 200, 340)}</g>` +
+      lines([[4, 25, 28, 25]], 'var(--wi-cloud-edge)'),
+  };
+  for (const k of Object.keys(below)) { sym[k] = cloud(up) + below[k]; sym[k + '-n'] = moon(8, 6, 6) + cloud(upN) + below[k]; }
+  const svg = `<svg width="0" height="0" style="position:absolute" aria-hidden="true">` +
+    Object.entries(sym).map(([k, v]) => `<symbol id="wi-${k}" viewBox="0 0 32 32">${v}</symbol>`).join('') + '</svg>';
+  document.body.insertAdjacentHTML('afterbegin', svg);
+  $('#iconLegend').innerHTML = [['sun', 'claro'], ['moon', 'escuro'], ['twilight', 'amanhecendo / anoitecendo'], ['rain-n', 'chuva à noite']]
+    .map(([k, t]) => `<span>${wiSvg(k)}${t}</span>`).join('') + '<span>% = chance de chuva</span>';
+})();
+function wiSvg(name) {
+  const base = name.replace(/-n$/, '');
+  return `<svg class="wi" width="100%" height="100%" viewBox="0 0 32 32" role="img" aria-label="${WI_LABEL[base] || base}"><title>${WI_LABEL[base] || base}</title><use href="#wi-${name}"/></svg>`;
+}
+function wiName(e) {
+  const w = e.w;
+  if (!w) return null;
+  const night = e.sun.cls === 'sun-night', n = night ? '-n' : '';
+  const p = w.precip ?? 0, c = w.code ?? 0;
+  if (c >= 95) return 'storm' + n;
+  if (p >= 4 || c === 65 || c === 82) return 'heavy' + n;
+  if (p >= 0.5 || [61, 63, 80, 81].includes(c)) return 'rain' + n;
+  if (p >= 0.1 || (c >= 51 && c <= 57)) return 'drizzle' + n;
+  if (c === 45 || c === 48 || (w.vis != null && w.vis < 1000)) return 'fog' + n;
+  if (c === 3) return 'cloud' + n;
+  if (e.sun.cls === 'sun-twi') return 'twilight';
+  if (c === 2) return night ? 'moon-cloud' : 'sun-cloud';
+  return night ? 'moon' : 'sun';
+}
+
 /* ---------- Estado e renderização ---------- */
 let S = null, map = null, mapLayers = null;
 
@@ -554,6 +618,10 @@ function renderAll() {
 
 function renderGrid() {
   const scores = S.scen.map(scenScore), best = Math.min(...scores);
+  // um ícone a cada `every` trechos, para caberem lado a lado (~22 px cada)
+  const cellsW = Math.max(120, $('#grid').clientWidth - 64 - 8 - 16);
+  const every = Math.max(1, Math.ceil(S.points.length / Math.floor(cellsW / 22)));
+  S.every = every;
   const bestIdx = scores.length > 1 ? scores.indexOf(best) : -1;
   $('#grid').innerHTML = S.scen.map((sc, k) => {
     const cells = sc.ev.map((e, i) => {
@@ -563,7 +631,7 @@ function renderGrid() {
     const offTxt = sc.off === 0 ? 'planejada' : `${sc.off > 0 ? '+' : '−'}${Math.abs(sc.off) >= 60 && Math.abs(sc.off) % 60 === 0 ? Math.abs(sc.off) / 60 + ' h' : Math.abs(sc.off) + ' min'}`;
     return `<div class="grow${k === S.sel ? ' sel' : ''}" data-k="${k}" role="button" tabindex="0">
       <div class="hr">${hhmm(new Date(sc.dep))}<small>${offTxt}</small></div>
-      <div class="gcol"><div class="cells">${cells}</div><div class="cells sun">${sc.ev.map(e => `<i class="${e.sun.cls}" title="${hhmm(new Date(e.t))} · ${e.sun.txt}"></i>`).join('')}</div></div>
+      <div class="gcol"><div class="icons">${sc.ev.map((e, i) => `<span>${i % every === 0 || i === sc.ev.length - 1 && i % every > every / 2 ? wiSvg(wiName(e)) : ''}</span>`).join('')}</div><div class="cells">${cells}</div></div>
       <div class="gsum">${k === bestIdx ? '<span class="best">★ melhor janela</span> · ' : ''}${scenSummary(sc)}</div>
     </div>`;
   }).join('');
@@ -596,8 +664,10 @@ function renderSel() {
     }
     const chips = (pt.stop ? [`<span class="chip stop">Parada ${S.cfg.stopDur} min</span>`] : [])
       .concat(e.alerts.filter(a => a.l > 0).map(a => `<span class="chip c${a.l}">${esc(a.txt)}</span>`)).join('');
+    const wn = wiName(e), showProb = w && w.prob != null && (/^(drizzle|rain|heavy|storm)/.test(wn) || w.prob >= 40);
     return `<li>
       <div class="t" style="border-left-color:${levelColor(e.lvl)}">${hhmm(new Date(e.t))}<small>km ${Math.round(pt.dist / 1000)}</small></div>
+      <div class="ic">${wn ? wiSvg(wn) : ''}${showProb ? `<small title="chance de chuva">${w.prob}%</small>` : ''}</div>
       <div><div class="p"><span class="place" data-i="${i}">${label || '…'}</span> <small>${esc(pt.road)}</small></div>
         <div class="tmp">${tline || lt}</div>
         <div class="w">${esc(wline)}</div>${chips ? `<div class="chips">${chips}</div>` : ''}</div>
@@ -625,7 +695,9 @@ function renderMap(sc) {
   }
   points.forEach((pt, i) => {
     const e = sc.ev[i];
-    const html = `<b>${hhmm(new Date(e.t))}</b> · km ${Math.round(pt.dist / 1000)} ${esc(pt.road)}<br>` +
+    const wn = wiName(e);
+    const html = `<div style="display:flex;gap:8px;align-items:center">${wn ? `<span style="width:30px;height:30px;flex:none">${wiSvg(wn)}</span>` : ''}` +
+      `<span><b>${hhmm(new Date(e.t))}</b> · km ${Math.round(pt.dist / 1000)} ${esc(pt.road)}</span></div>` +
       (e.w && e.w.temp != null ? `${Math.round(e.w.temp)}° · sensação ${Math.round(e.w.chill)}° · ${e.sun.txt}<br>` : `${e.sun.txt}<br>`) +
       (e.alerts.length ? e.alerts.map(a => esc(a.txt)).join('<br>') : 'sem alertas');
     L.circleMarker([pt.lat, pt.lon], { radius: pt.stop || pt.first || pt.last ? 7 : 4, color: '#fff', weight: 1.5, fillColor: levelColor(e.lvl), fillOpacity: 1 })
@@ -694,6 +766,8 @@ function loadState(st) {
 setupAC($('#orig')); setupAC($('#dest'));
 $('#addVia').onclick = () => addVia().focus();
 $('#go').onclick = run;
+let resizeT;
+addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (S && !$('#result').hidden) renderGrid(); }, 200); });
 $('#gmaps').addEventListener('input', () => { if ($('#gmaps').value) setStatus('Com o link preenchido, os campos acima são ignorados.'); else setStatus(''); });
 {
   const now = new Date(); now.setMinutes(0, 0, 0); now.setHours(now.getHours() + 1);
