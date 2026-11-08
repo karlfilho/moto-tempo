@@ -232,27 +232,39 @@ function photonItem(f) {
 async function photonFetch(params) {
   const r = await fetch(`https://photon.komoot.io/api/?${params}&bbox=-74,-34,-34,5`);
   if (!r.ok) throw new Error('Busca de endereço falhou');
-  return (await r.json()).features;
+  return (await r.json()).features.map(photonItem);
 }
-/* Duas buscas em paralelo: só cidades (sem viés de lugar) e a geral (puxada para SP, boa para ruas).
-   O viés da geral fazia "Alameda Ribeirão Preto" (SP capital) passar na frente da cidade de Ribeirão Preto. */
+/* Cidades: geocoding do Open-Meteo (GeoNames; mesmo provedor da previsão, acha "Ribeirão Pr" enquanto digita). */
+async function cityFetch(q) {
+  // "Ribeirão Preto, SP" → busca só o nome
+  const name = q.split(',')[0].replace(/\s+-\s+\w{2}$/, '').trim();
+  const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=5&language=pt&countryCode=BR`);
+  if (!r.ok) throw new Error('Busca de cidade falhou');
+  return ((await r.json()).results || []).filter(c => /^PPL/.test(c.feature_code || '')).map(c => {
+    const muni = /^PPLA|^PPLC/.test(c.feature_code) || !c.admin2 || c.admin2 === c.name;
+    const sub = [muni ? null : c.admin2, c.admin1].filter(Boolean).join(' – ');
+    return { label: sub ? `${c.name}, ${sub}` : c.name, main: c.name, sub, lat: c.latitude, lon: c.longitude };
+  });
+}
+/* Duas fontes em paralelo: cidades (Open-Meteo) e endereços/ruas (Photon, puxado para SP).
+   O viés do Photon fazia "Alameda Ribeirão Preto" (SP capital) esconder a cidade; e se o Photon cair,
+   as cidades continuam aparecendo. Só dá erro se as duas falharem. */
 async function photonSearch(q, limit = 6) {
-  const e = encodeURIComponent(q);
-  const [cities, general] = await Promise.all([
-    photonFetch(`q=${e}&limit=4&layer=city`).catch(() => []),
-    photonFetch(`q=${e}&limit=${Math.max(limit, 3)}&lat=-23.5&lon=-46.6`),
+  const [c, p] = await Promise.allSettled([
+    cityFetch(q),
+    photonFetch(`q=${encodeURIComponent(q)}&limit=${Math.max(limit, 3)}&lat=-23.5&lon=-46.6`),
   ]);
+  if (c.status === 'rejected' && p.status === 'rejected') throw new Error('Busca de endereço falhou');
+  const cities = c.value || [], general = p.value || [];
   const nq = normTxt(q);
   const top = [], rest = [];
-  for (const f of cities) {
-    if (f.properties.type !== 'city') continue;
-    const n = normTxt(f.properties.name);
+  for (const it of cities) {
+    const n = normTxt(it.main);
     // a cidade vai para o topo quando é o que se está digitando ("Ribeirão Pr", "Ribeirão Preto, SP")
-    (n.startsWith(nq) || nq.startsWith(n + ' ') || nq.startsWith(n + ',') || nq === n ? top : rest).push(f);
+    (n.startsWith(nq) || nq.startsWith(n + ' ') || nq.startsWith(n + ',') || nq === n ? top : rest).push(it);
   }
   const seen = new Set(), out = [];
-  for (const f of [...top, ...general, ...rest]) {
-    const it = photonItem(f);
+  for (const it of [...top, ...general, ...rest]) {
     if (seen.has(it.label)) continue;
     seen.add(it.label); out.push(it);
   }
@@ -260,17 +272,18 @@ async function photonSearch(q, limit = 6) {
 }
 function setupAC(input) {
   const ul = input.parentElement.querySelector('ul');
-  let timer, items = [], active = -1;
+  let timer, items = [], active = -1, seq = 0;
   const render = () => {
     ul.innerHTML = items.map((it, i) => `<li data-i="${i}" class="${i === active ? 'on' : ''}">${esc(it.main)}<br><small>${esc(it.sub)}</small></li>`).join('');
   };
-  const pick = i => { const it = items[i]; if (!it) return; input.value = it.label; input.place = it; items = []; render(); };
+  const pick = i => { const it = items[i]; if (!it) return; seq++; input.value = it.label; input.place = it; items = []; render(); };
   input.addEventListener('input', () => {
     input.place = null; clearTimeout(timer);
     const q = input.value.trim();
-    if (q.length < 3 || COORD_RE.test(q)) { items = []; render(); return; }
+    if (q.length < 3 || COORD_RE.test(q)) { seq++; items = []; render(); return; }
     timer = setTimeout(async () => {
-      try { items = await photonSearch(q); active = -1; render(); } catch { /* silencioso */ }
+      const my = ++seq; // resposta atrasada de uma busca anterior não sobrescreve a atual
+      try { const r = await photonSearch(q); if (my === seq) { items = r; active = -1; render(); } } catch { /* silencioso */ }
     }, 280);
   });
   input.addEventListener('keydown', e => {
