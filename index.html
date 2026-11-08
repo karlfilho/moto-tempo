@@ -224,14 +224,39 @@ function photonLabel(p) {
   const main = [pr.name || pr.street, pr.housenumber].filter(Boolean).join(', ');
   return { main: main || where, sub: main ? where : (pr.country || '') };
 }
-async function photonSearch(q, limit = 6) {
-  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=${limit}&lat=-23.5&lon=-46.6&bbox=-74,-34,-34,5`;
-  const r = await fetch(url);
+const normTxt = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+function photonItem(f) {
+  const l = photonLabel(f);
+  return { label: l.sub ? `${l.main}, ${l.sub}` : l.main, main: l.main, sub: l.sub, lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] };
+}
+async function photonFetch(params) {
+  const r = await fetch(`https://photon.komoot.io/api/?${params}&bbox=-74,-34,-34,5`);
   if (!r.ok) throw new Error('Busca de endereço falhou');
-  return (await r.json()).features.map(f => {
-    const l = photonLabel(f);
-    return { label: l.sub ? `${l.main}, ${l.sub}` : l.main, main: l.main, sub: l.sub, lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] };
-  });
+  return (await r.json()).features;
+}
+/* Duas buscas em paralelo: só cidades (sem viés de lugar) e a geral (puxada para SP, boa para ruas).
+   O viés da geral fazia "Alameda Ribeirão Preto" (SP capital) passar na frente da cidade de Ribeirão Preto. */
+async function photonSearch(q, limit = 6) {
+  const e = encodeURIComponent(q);
+  const [cities, general] = await Promise.all([
+    photonFetch(`q=${e}&limit=4&layer=city`).catch(() => []),
+    photonFetch(`q=${e}&limit=${Math.max(limit, 3)}&lat=-23.5&lon=-46.6`),
+  ]);
+  const nq = normTxt(q);
+  const top = [], rest = [];
+  for (const f of cities) {
+    if (f.properties.type !== 'city') continue;
+    const n = normTxt(f.properties.name);
+    // a cidade vai para o topo quando é o que se está digitando ("Ribeirão Pr", "Ribeirão Preto, SP")
+    (n.startsWith(nq) || nq.startsWith(n + ' ') || nq.startsWith(n + ',') || nq === n ? top : rest).push(f);
+  }
+  const seen = new Set(), out = [];
+  for (const f of [...top, ...general, ...rest]) {
+    const it = photonItem(f);
+    if (seen.has(it.label)) continue;
+    seen.add(it.label); out.push(it);
+  }
+  return out.slice(0, limit);
 }
 function setupAC(input) {
   const ul = input.parentElement.querySelector('ul');
