@@ -48,6 +48,7 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .ac li { padding: 8px 10px; border-radius: 8px; cursor: pointer; }
 .ac li small { color: var(--muted); }
 .ac li:hover, .ac li.on { background: var(--bg); }
+.ac li.hint { cursor: default; } .ac li.hint:hover { background: none; }
 .via { display: flex; gap: 8px; align-items: center; }
 .via .ac { flex: 1; }
 button { font: inherit; cursor: pointer; border-radius: 10px; border: 1px solid var(--line); background: var(--field); color: var(--ink); padding: 9px 12px; }
@@ -216,59 +217,103 @@ const store = {
 };
 function setStatus(msg, err) { const el = $('#status'); el.textContent = msg || ''; el.className = err ? 'err' : ''; }
 
-/* ---------- Endereços (Photon / OpenStreetMap) ---------- */
+/* ---------- Endereços ----------
+   Três fontes, nenhuma obrigatória:
+   · Open-Meteo (cidades, enquanto digita) — mesmo provedor da previsão;
+   · Photon (ruas, enquanto digita) — opcional: se cair, o site segue sem ele;
+   · Nominatim (OpenStreetMap oficial) — endereço digitado sem escolher da lista e nome das cidades da rota.
+     Regra de uso dele: nada de busca a cada tecla e no máximo 1 consulta por segundo (fila abaixo). */
 const COORD_RE = /^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/;
-function photonLabel(p) {
-  const pr = p.properties;
+const normTxt = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+const mkItem = (main, sub, lat, lon) => ({ label: sub ? `${main}, ${sub}` : main, main, sub, lat: +lat, lon: +lon });
+async function fetchT(url, ms = 6000) {
+  const ac = new AbortController(), t = setTimeout(() => ac.abort(), ms);
+  try { return await fetch(url, { signal: ac.signal }); } finally { clearTimeout(t); }
+}
+
+/* Photon: se falhar, fica de lado por 5 min em vez de atrasar cada busca. */
+let photonOffUntil = 0;
+async function photon(path) {
+  if (Date.now() < photonOffUntil) throw new Error('Photon fora');
+  try {
+    const r = await fetchT(`https://photon.komoot.io/${path}`, 4000);
+    if (!r.ok) throw new Error('Photon ' + r.status);
+    return (await r.json()).features;
+  } catch (e) { photonOffUntil = Date.now() + 5 * 60e3; throw e; }
+}
+function photonItem(f) {
+  const pr = f.properties;
   const where = [pr.city && pr.city !== pr.name ? pr.city : null, pr.state].filter(Boolean).join(' – ');
   const main = [pr.name || pr.street, pr.housenumber].filter(Boolean).join(', ');
-  return { main: main || where, sub: main ? where : (pr.country || '') };
+  return mkItem(main || where, main ? where : (pr.country || ''), f.geometry.coordinates[1], f.geometry.coordinates[0]);
 }
-const normTxt = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
-function photonItem(f) {
-  const l = photonLabel(f);
-  return { label: l.sub ? `${l.main}, ${l.sub}` : l.main, main: l.main, sub: l.sub, lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] };
-}
-async function photonFetch(params) {
-  const r = await fetch(`https://photon.komoot.io/api/?${params}&bbox=-74,-34,-34,5`);
-  if (!r.ok) throw new Error('Busca de endereço falhou');
-  return (await r.json()).features.map(photonItem);
-}
-/* Cidades: geocoding do Open-Meteo (GeoNames; mesmo provedor da previsão, acha "Ribeirão Pr" enquanto digita). */
+const photonFetch = (q, limit) =>
+  photon(`api/?q=${encodeURIComponent(q)}&limit=${limit}&lat=-23.5&lon=-46.6&bbox=-74,-34,-34,5`).then(fs => fs.map(photonItem));
+
+/* Cidades: geocoding do Open-Meteo (acha "Ribeirão Pr" enquanto digita). */
 async function cityFetch(q) {
-  // "Ribeirão Preto, SP" → busca só o nome
-  const name = q.split(',')[0].replace(/\s+-\s+\w{2}$/, '').trim();
-  const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=5&language=pt&countryCode=BR`);
+  const name = q.split(',')[0].replace(/\s+-\s+\w{2}$/, '').trim(); // "Ribeirão Preto, SP" → só o nome
+  const r = await fetchT(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=5&language=pt&countryCode=BR`);
   if (!r.ok) throw new Error('Busca de cidade falhou');
   return ((await r.json()).results || []).filter(c => /^PPL/.test(c.feature_code || '')).map(c => {
     const muni = /^PPLA|^PPLC/.test(c.feature_code) || !c.admin2 || c.admin2 === c.name;
-    const sub = [muni ? null : c.admin2, c.admin1].filter(Boolean).join(' – ');
-    return { label: sub ? `${c.name}, ${sub}` : c.name, main: c.name, sub, lat: c.latitude, lon: c.longitude };
+    return mkItem(c.name, [muni ? null : c.admin2, c.admin1].filter(Boolean).join(' – '), c.latitude, c.longitude);
   });
 }
-/* Duas fontes em paralelo: cidades (Open-Meteo) e endereços/ruas (Photon, puxado para SP).
-   O viés do Photon fazia "Alameda Ribeirão Preto" (SP capital) esconder a cidade; e se o Photon cair,
-   as cidades continuam aparecendo. Só dá erro se as duas falharem. */
-async function photonSearch(q, limit = 6) {
-  const [c, p] = await Promise.allSettled([
-    cityFetch(q),
-    photonFetch(`q=${encodeURIComponent(q)}&limit=${Math.max(limit, 3)}&lat=-23.5&lon=-46.6`),
-  ]);
-  if (c.status === 'rejected' && p.status === 'rejected') throw new Error('Busca de endereço falhou');
-  const cities = c.value || [], general = p.value || [];
-  const nq = normTxt(q);
-  const top = [], rest = [];
+// a cidade vale como "o que se está digitando" ("Ribeirão Pr", "Ribeirão Preto, SP")
+function splitCities(q, cities) {
+  const nq = normTxt(q), top = [], rest = [];
   for (const it of cities) {
     const n = normTxt(it.main);
-    // a cidade vai para o topo quando é o que se está digitando ("Ribeirão Pr", "Ribeirão Preto, SP")
     (n.startsWith(nq) || nq.startsWith(n + ' ') || nq.startsWith(n + ',') || nq === n ? top : rest).push(it);
   }
+  return { top, rest };
+}
+
+/* Nominatim, em fila: no máximo 1 consulta a cada 1,1 s. */
+let nomiChain = Promise.resolve();
+function nominatim(path) {
+  const job = nomiChain.then(async () => {
+    try {
+      const r = await fetchT(`https://nominatim.openstreetmap.org/${path}&format=jsonv2&addressdetails=1&accept-language=pt-BR`, 10000);
+      if (!r.ok) throw new Error('Nominatim ' + r.status);
+      return await r.json();
+    } finally { await new Promise(res => setTimeout(res, 1100)); }
+  });
+  nomiChain = job.catch(() => {});
+  return job;
+}
+const uf = a => (a && a['ISO3166-2-lvl4'] || '').split('-')[1] || (a && a.state) || '';
+const cityOf = a => a.city || a.town || a.village || a.municipality || a.county || '';
+async function nominatimSearch(q) {
+  const rs = await nominatim(`search?q=${encodeURIComponent(q)}&limit=1&countrycodes=br,ar,uy,py,bo,cl`);
+  return rs.map(r => {
+    const a = r.address || {}, c = cityOf(a);
+    const main = [a.road, a.house_number].filter(Boolean).join(', ') || r.name || c || r.display_name;
+    return mkItem(main, [c !== main ? c : null, uf(a)].filter(Boolean).join(' – '), r.lat, r.lon);
+  });
+}
+
+/* Lista enquanto digita: cidades (Open-Meteo) + ruas (Photon, se no ar). Só dá erro se as duas falharem. */
+async function placeSearch(q, limit = 6) {
+  const [c, p] = await Promise.allSettled([cityFetch(q), photonFetch(q, limit)]);
+  if (c.status === 'rejected' && p.status === 'rejected') throw new Error('Busca de endereço falhou');
+  const { top, rest } = splitCities(q, c.value || []);
   const seen = new Set(), out = [];
-  for (const it of [...top, ...general, ...rest]) {
+  for (const it of [...top, ...(p.value || []), ...rest]) {
     if (seen.has(it.label)) continue;
     seen.add(it.label); out.push(it);
   }
   return out.slice(0, limit);
+}
+/* Um lugar só (texto não escolhido da lista, ou link do Google): cidade exata > Photon > Nominatim. */
+async function geocodeOne(q) {
+  const [c, p] = await Promise.allSettled([cityFetch(q), photonFetch(q, 1)]);
+  const top = splitCities(q, c.value || []).top;
+  if (top.length) return top[0];
+  if (p.value && p.value.length) return p.value[0];
+  try { const n = await nominatimSearch(q); if (n.length) return n[0]; } catch {}
+  return null;
 }
 function setupAC(input) {
   const ul = input.parentElement.querySelector('ul');
@@ -283,7 +328,12 @@ function setupAC(input) {
     if (q.length < 3 || COORD_RE.test(q)) { seq++; items = []; render(); return; }
     timer = setTimeout(async () => {
       const my = ++seq; // resposta atrasada de uma busca anterior não sobrescreve a atual
-      try { const r = await photonSearch(q); if (my === seq) { items = r; active = -1; render(); } } catch { /* silencioso */ }
+      try {
+        const r = await placeSearch(q);
+        if (my !== seq) return;
+        items = r; active = -1; render();
+        if (!r.length) ul.innerHTML = '<li class="hint"><small>Nada na lista — o endereço será procurado ao calcular.</small></li>';
+      } catch { /* silencioso */ }
     }, 280);
   });
   input.addEventListener('keydown', e => {
@@ -302,9 +352,9 @@ async function resolvePlace(input, what) {
   if (!q) throw new Error(`Preencha "${what}".`);
   const m = q.match(COORD_RE);
   if (m) return input.place = { label: q, lat: +m[1], lon: +m[2] };
-  const res = await photonSearch(q, 1);
-  if (!res.length) throw new Error(`Não encontrei "${q}".`);
-  return input.place = res[0];
+  const res = await geocodeOne(q);
+  if (!res) throw new Error(`Não encontrei "${q}".`);
+  return input.place = res;
 }
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -573,9 +623,9 @@ async function run() {
       for (const n of names) {
         const m = n.match(COORD_RE);
         if (m) { places.push({ label: n, lat: +m[1], lon: +m[2] }); continue; }
-        const r = await photonSearch(n, 1);
-        if (!r.length) throw new Error(`Não encontrei "${n}".`);
-        places.push(r[0]);
+        const r = await geocodeOne(n);
+        if (!r) throw new Error(`Não encontrei "${n}".`);
+        places.push(r);
       }
     } else {
       places = [await resolvePlace($('#orig'), 'Saindo de')];
@@ -744,8 +794,9 @@ function renderMap(sc) {
   if (!map._fitted) { map.fitBounds(L.latLngBounds(route.pts), { padding: [16, 16] }); map._fitted = true; }
 }
 
-/* Nome da cidade de cada ponto (Photon reverso), em segundo plano. */
-const placeCache = {};
+/* Nome da cidade de cada ponto, em segundo plano: Photon reverso se estiver no ar, senão Nominatim
+   (fila de 1/s). Nomes ficam guardados no navegador para não perguntar de novo na próxima rota. */
+const placeCache = store.get('motoTempoLugares') || {};
 function applyPlaceNames() {
   document.querySelectorAll('.place').forEach(el => {
     const pt = S.points[+el.dataset.i], nm = placeCache[key(pt)];
@@ -754,6 +805,15 @@ function applyPlaceNames() {
   });
 }
 const key = pt => `${pt.lat.toFixed(2)},${pt.lon.toFixed(2)}`;
+async function reverseName(pt) {
+  try {
+    const f = (await photon(`reverse?lat=${pt.lat}&lon=${pt.lon}&limit=1`))[0];
+    if (f) { const p = f.properties; return [p.city || p.county || p.name, p.state ? (UF[p.state] || p.state) : ''].filter(Boolean).join(' – '); }
+  } catch {}
+  const r = await nominatim(`reverse?lat=${pt.lat}&lon=${pt.lon}&zoom=10`);
+  const a = r && r.address;
+  return a ? [cityOf(a) || r.name, uf(a)].filter(Boolean).join(' – ') : '';
+}
 async function fillPlaceNames() {
   const mine = S;
   for (const pt of mine.points) {
@@ -761,12 +821,16 @@ async function fillPlaceNames() {
     const k = key(pt);
     if (placeCache[k]) continue;
     try {
-      const r = await fetch(`https://photon.komoot.io/reverse?lat=${pt.lat}&lon=${pt.lon}&limit=1`);
-      const f = (await r.json()).features[0];
-      if (f) { const p = f.properties; placeCache[k] = [p.city || p.county || p.name, p.state ? p.state.replace(/^(São Paulo|Paraná|Santa Catarina|Minas Gerais|Rio de Janeiro|Rio Grande do Sul)$/, m => UF[m]) : ''].filter(Boolean).join(' – '); }
+      const nm = await reverseName(pt);
+      if (nm) {
+        placeCache[k] = nm;
+        const ks = Object.keys(placeCache); // guarda até ~2000 nomes
+        if (ks.length > 2000) ks.slice(0, ks.length - 2000).forEach(x => delete placeCache[x]);
+        store.set('motoTempoLugares', placeCache);
+      }
     } catch {}
     applyPlaceNames();
-    await new Promise(r => setTimeout(r, 120));
+    if (Date.now() >= photonOffUntil) await new Promise(r => setTimeout(r, 120));
   }
 }
 const UF = { 'São Paulo': 'SP', 'Paraná': 'PR', 'Santa Catarina': 'SC', 'Minas Gerais': 'MG', 'Rio de Janeiro': 'RJ', 'Rio Grande do Sul': 'RS' };
