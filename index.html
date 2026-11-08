@@ -58,6 +58,10 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .via .ac { flex: 1; }
 button { font: inherit; cursor: pointer; border-radius: 10px; border: 1px solid var(--line); background: var(--field); color: var(--ink); padding: 9px 12px; }
 button.primary { width: 100%; margin-top: 16px; background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; padding: 12px; }
+.actions { display: flex; gap: 10px; margin-top: 16px; }
+.actions button.primary { flex: 1; margin-top: 0; }
+.actions #clear { white-space: nowrap; }
+.actions #clear:hover { border-color: var(--accent); }
 button.link { border: 0; background: none; color: var(--accent); padding: 6px 0; }
 button.x { padding: 6px 10px; }
 details { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 8px; }
@@ -176,7 +180,10 @@ svg.wi { display: block; overflow: visible; }
       </div>
       <p class="hint">Ritmo 110% = 10% mais lento que o tempo de carro do roteador. Parar a cada 0 = sem paradas. A sensação térmica usa a velocidade média de cada trecho.</p>
     </details>
-    <button class="primary" id="go" type="button">Ver o tempo no trajeto</button>
+    <div class="actions">
+      <button class="primary" id="go" type="button">Ver o tempo no trajeto</button>
+      <button id="clear" type="button" title="Limpa origem, destino e paradas (mantém ritmo e modelo)">Nova viagem</button>
+    </div>
     <p id="status" role="status"></p>
   </section>
 
@@ -624,7 +631,7 @@ function wiName(e) {
 }
 
 /* ---------- Estado e renderização ---------- */
-let S = null, map = null, mapLayers = null;
+let S = null, map = null, mapLayers = null, runSeq = 0;
 
 function readCfg() {
   return {
@@ -643,6 +650,7 @@ function evaluate(points, weather, depMs) {
 
 async function run() {
   const btn = $('#go'); btn.disabled = true;
+  const my = ++runSeq; // "Nova viagem" no meio do cálculo descarta este resultado
   try {
     const cfg = readCfg();
     const g = $('#gmaps').value.trim();
@@ -667,7 +675,7 @@ async function run() {
     if (!cfg.date || !cfg.time) throw new Error(!cfg.date ? 'Dia inválido — use dd/mm/aaaa.' : 'Hora inválida — use hh:mm, de 00:00 a 23:59.');
     const dep = new Date(`${cfg.date}T${cfg.time}`).getTime();
 
-    setStatus('Traçando a rota…');
+    if (my === runSeq) setStatus('Traçando a rota…');
     const route = await getRoute(places);
     const points = samplePoints(route, cfg);
     const [a, b, step] = cfg.span.split(',').map(Number);
@@ -675,19 +683,21 @@ async function run() {
     const lastPt = points[points.length - 1];
     const until = dep + (b * 60 + lastPt.elapsed) * 1000;
 
-    setStatus(`Buscando a previsão para ${points.length} pontos…`);
+    if (my === runSeq) setStatus(`Buscando a previsão para ${points.length} pontos…`);
     const weather = await getWeather(points, until, cfg.model);
     const scen = offsets.map(o => ({ off: o, dep: dep + o * 60000, ev: evaluate(points, weather, dep + o * 60000) }));
+    if (my !== runSeq) return;
     S = { places, route, points, weather, scen, cfg, sel: offsets.indexOf(0) >= 0 ? offsets.indexOf(0) : 0 };
     saveState(places, cfg);
     $('#result').hidden = false;
+    if (map) map._fitted = false; // rota nova: enquadra o mapa de novo
     renderAll();
     setStatus('');
     $('#result').scrollIntoView({ behavior: 'smooth', block: 'start' });
     fillPlaceNames();
   } catch (e) {
     console.error(e);
-    setStatus(e.message || String(e), true);
+    if (my === runSeq) setStatus(e.message || String(e), true);
   } finally { btn.disabled = false; }
 }
 
@@ -861,6 +871,7 @@ async function fillPlaceNames() {
         store.set('motoTempoLugares', placeCache);
       }
     } catch {}
+    if (S !== mine) return;
     applyPlaceNames();
     if (Date.now() >= photonOffUntil) await new Promise(r => setTimeout(r, 120));
   }
@@ -896,10 +907,36 @@ function loadState(st) {
   return c;
 }
 
+/* Saída padrão: próxima hora cheia. */
+function setDefaultWhen() {
+  const now = new Date(); now.setMinutes(0, 0, 0); now.setHours(now.getHours() + 1);
+  setDate(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`);
+  setTime(hhmm(now));
+}
+/* Nova viagem: limpa origem, destino, paradas, link e resultado; mantém ritmo, paradas e modelo. */
+function clearTrip() {
+  for (const id of ['orig', 'dest']) { const el = $('#' + id); el.value = ''; el.place = null; }
+  $('#vias').innerHTML = '';
+  $('#gmaps').value = '';
+  document.querySelectorAll('.ac ul').forEach(u => { u.innerHTML = ''; });
+  setDefaultWhen();
+  S = null; runSeq++; // interrompe cálculo em andamento e o preenchimento dos nomes da rota anterior
+  $('#result').hidden = true;
+  if (mapLayers) { mapLayers.remove(); mapLayers = null; }
+  if (map) map._fitted = false;
+  setStatus('');
+  const st = store.get('motoTempo');
+  if (st) store.set('motoTempo', { ...st, places: [] });
+  history.replaceState(null, '', location.pathname + location.search);
+  scrollTo({ top: 0, behavior: 'smooth' });
+  $('#orig').focus({ preventScroll: true });
+}
+
 /* ---------- Início ---------- */
 setupAC($('#orig')); setupAC($('#dest'));
 $('#addVia').onclick = () => addVia().focus();
 $('#go').onclick = run;
+$('#clear').onclick = clearTrip;
 /* Máscaras: barras e dois-pontos entram sozinhos ao digitar (não ao apagar). */
 $('#date').addEventListener('input', e => {
   if ((e.inputType || '').startsWith('delete')) return;
@@ -923,9 +960,7 @@ let resizeT;
 addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (S && !$('#result').hidden) renderGrid(); }, 200); });
 $('#gmaps').addEventListener('input', () => { if ($('#gmaps').value) setStatus('Com o link preenchido, os campos acima são ignorados.'); else setStatus(''); });
 {
-  const now = new Date(); now.setMinutes(0, 0, 0); now.setHours(now.getHours() + 1);
-  setDate(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`);
-  setTime(hhmm(now));
+  setDefaultWhen();
   let fromHash = null;
   if (location.hash.length > 1) { try { fromHash = JSON.parse(decodeURIComponent(location.hash.slice(1))); } catch {} }
   const st = fromHash || store.get('motoTempo');
