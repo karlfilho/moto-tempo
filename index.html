@@ -4,7 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Moto Tempo</title>
-<meta name="description" content="Previsão do tempo ao longo do trajeto, na hora em que você passa por cada trecho.">
+<meta name="description" content="Previsão do tempo ao longo do trajeto, na hora em que você passa por cada trecho. Gratuito, sem cadastro e sem anúncios.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Moto Tempo — o tempo em cada trecho da viagem">
+<meta property="og:description" content="Chuva, pista molhada, vento lateral, frio e escuro ao longo da rota, na hora em que você passa. Compare horários de saída. Gratuito, sem cadastro.">
+<meta property="og:url" content="https://karlfilho.github.io/moto-tempo/">
+<meta property="og:locale" content="pt_BR">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
 :root {
@@ -34,6 +39,14 @@ header { padding: 20px 16px 8px; max-width: 980px; margin: 0 auto; }
 header h1 { margin: 0; font-size: 1.5rem; letter-spacing: .01em; }
 header h1 span { color: var(--accent); }
 header p { margin: 4px 0 0; color: var(--muted); }
+header p.free { font-size: .85rem; color: var(--accent); font-weight: 600; }
+footer { max-width: 980px; margin: 8px auto 0; padding: 0 16px 32px; font-size: .85rem; color: var(--muted); }
+footer details { border-top: 1px solid var(--line); padding: 10px 0; }
+footer summary { cursor: pointer; color: var(--ink); font-weight: 600; }
+footer details p, footer details li { line-height: 1.5; }
+footer ul { padding-left: 18px; margin: 6px 0; }
+footer a, .hint a { color: var(--accent); }
+footer .free { color: var(--ink); margin: 0 0 8px; }
 main { max-width: 980px; margin: 0 auto; padding: 8px 16px 40px; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin: 12px 0; }
 .card h2 { margin: 0 0 10px; font-size: 1.1rem; }
@@ -139,6 +152,7 @@ svg.wi { display: block; overflow: visible; }
 <header>
   <h1>Moto <span>Tempo</span></h1>
   <p>A previsão de cada trecho na hora em que você vai passar por ele.</p>
+  <p class="free">Gratuito, sem cadastro e sem anúncios.</p>
 </header>
 <main>
   <section class="card" id="form">
@@ -184,6 +198,7 @@ svg.wi { display: block; overflow: visible; }
       <button class="primary" id="go" type="button">Ver o tempo no trajeto</button>
       <button id="clear" type="button" title="Limpa origem, destino e paradas (mantém ritmo e modelo)">Nova viagem</button>
     </div>
+    <p class="hint">A previsão é uma estimativa e pode errar; a decisão de sair é sempre sua. <a href="#aviso" data-open>Leia o aviso</a>.</p>
     <p id="status" role="status"></p>
   </section>
 
@@ -215,6 +230,38 @@ svg.wi { display: block; overflow: visible; }
     </p>
   </section>
 </main>
+
+<footer>
+  <p class="free"><b>O Moto Tempo é completamente gratuito:</b> sem cadastro, sem anúncios, sem planos pagos e sem fins lucrativos.</p>
+  <details id="aviso">
+    <summary>Aviso importante</summary>
+    <ul>
+      <li>É uma ferramenta de apoio ao planejamento, de caráter apenas informativo. Não garante as condições da estrada nem a sua segurança.</li>
+      <li>As previsões vêm de modelos meteorológicos e podem errar, sobretudo pancadas de chuva, que mudam de lugar e de hora em pouco tempo. No dia, confira o radar e as condições locais antes de sair e nas paradas.</li>
+      <li>A rota e os horários são calculados automaticamente e podem diferir do caminho que você vai fazer e do seu ritmo real.</li>
+      <li>Nada aqui substitui o seu julgamento, a sinalização, as orientações das autoridades de trânsito e as regras do Código de Trânsito Brasileiro. A decisão de viajar, de esperar ou de mudar o caminho é sempre do piloto.</li>
+      <li>Não mexa no celular pilotando: consulte o Moto Tempo antes de sair e nas paradas.</li>
+      <li>O site depende de serviços públicos gratuitos de terceiros, que podem ficar fora do ar ou devolver dados incompletos. Ele é oferecido como está, sem garantia de funcionamento, e os autores não se responsabilizam por decisões tomadas com base nele nem por danos decorrentes do seu uso.</li>
+    </ul>
+  </details>
+  <details id="privacidade">
+    <summary>Privacidade</summary>
+    <ul>
+      <li>Não há cadastro, login nem cookies, e nenhum dado é vendido ou compartilhado pelo Moto Tempo.</li>
+      <li>Contamos visitas de forma anônima com o <a href="https://www.goatcounter.com/" rel="noopener" target="_blank">GoatCounter</a>: só a página aberta, o site de onde você veio, o tipo de navegador, o tamanho da tela e o país aproximado, sem cookies e sem guardar seu endereço IP. Também contamos quantas rotas são calculadas, sem enviar a rota, os locais nem os horários.</li>
+      <li>Sua última viagem e suas preferências ficam guardadas só no seu próprio navegador e no endereço da página, para você reabrir ou compartilhar. O botão “Nova viagem” apaga a viagem; limpar os dados do navegador apaga tudo.</li>
+      <li>Para calcular, o seu navegador consulta diretamente os serviços listados em “Fontes e créditos”, enviando o texto buscado e as coordenadas da rota. Como em qualquer site, eles recebem o seu endereço IP e seguem as próprias políticas de privacidade. O site é hospedado no GitHub Pages, que registra endereços IP por segurança.</li>
+    </ul>
+  </details>
+  <details id="creditos">
+    <summary>Fontes e créditos</summary>
+    <ul>
+      <li>Previsão do tempo e busca de cidades: <a href="https://open-meteo.com/" rel="noopener" target="_blank">Open-Meteo.com</a> (dados sob licença CC BY 4.0).</li>
+      <li>Rota: <a href="https://project-osrm.org/" rel="noopener" target="_blank">OSRM</a>. Endereços: <a href="https://nominatim.org/" rel="noopener" target="_blank">Nominatim</a> e <a href="https://photon.komoot.io/" rel="noopener" target="_blank">Photon</a>.</li>
+      <li>Mapa e dados de ruas: © colaboradores do <a href="https://www.openstreetmap.org/copyright" rel="noopener" target="_blank">OpenStreetMap</a>. Mapa interativo: <a href="https://leafletjs.com/" rel="noopener" target="_blank">Leaflet</a>.</li>
+    </ul>
+  </details>
+</footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
@@ -695,6 +742,7 @@ async function run() {
     setStatus('');
     $('#result').scrollIntoView({ behavior: 'smooth', block: 'start' });
     fillPlaceNames();
+    countEvent('rota-calculada', 'Rota calculada');
   } catch (e) {
     console.error(e);
     if (my === runSeq) setStatus(e.message || String(e), true);
@@ -937,6 +985,23 @@ setupAC($('#orig')); setupAC($('#dest'));
 $('#addVia').onclick = () => addVia().focus();
 $('#go').onclick = run;
 $('#clear').onclick = clearTrip;
+document.querySelectorAll('a[data-open]').forEach(a => a.addEventListener('click', e => {
+  e.preventDefault(); // o hash da página guarda a viagem; não pode ser trocado por #aviso
+  const d = document.querySelector(a.getAttribute('href'));
+  d.open = true; d.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}));
+
+/* Contador de visitas anônimo (GoatCounter: sem cookies, sem IP guardado). Só no site publicado.
+   Conta a página (sem o hash, que tem a viagem) e o evento "rota calculada", sem local nem horário. */
+const GOATCOUNTER = 'https://karlfilho.goatcounter.com/count';
+if (location.hostname === 'karlfilho.github.io') {
+  const sc = document.createElement('script');
+  sc.async = true; sc.src = 'https://gc.zgo.at/count.js'; sc.dataset.goatcounter = GOATCOUNTER;
+  document.head.appendChild(sc);
+}
+function countEvent(path, title) {
+  try { if (window.goatcounter && goatcounter.count) goatcounter.count({ path, title, event: true }); } catch {}
+}
 /* Máscaras: barras e dois-pontos entram sozinhos ao digitar (não ao apagar). */
 $('#date').addEventListener('input', e => {
   if ((e.inputType || '').startsWith('delete')) return;
